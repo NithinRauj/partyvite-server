@@ -3,6 +3,8 @@ from sqlmodel import Field
 
 
 class User(SQLModel, table=True):
+    __tablename__: str = "users"
+
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(default=None)
     email: str = Field(default=None)
