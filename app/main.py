@@ -1,20 +1,23 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .api import users
-from .config import get_config
+from .config import get_allowed_origins
 from .db.main import init_db
-
-app = FastAPI()
-
-app.include_router(users.router)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    yield
 
+app = FastAPI(lifespan=lifespan)
+app.include_router(users.router)
 
-@app.get('/')
-async def root():
-    db_url = get_config().DATABASE_URL
-    return {"success": True, "msg": db_url}
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
