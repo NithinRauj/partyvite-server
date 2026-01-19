@@ -57,7 +57,7 @@ def generate_access_token(data: dict, expires_delta: datetime.timedelta | None =
     else:
         expires_at += datetime.timedelta(hours=3)
     to_encode.update({'exp': expires_at})
-    return jwt.encode(to_encode, get_config().JWT_SECRET_KEY, 'HS256')
+    return jwt.encode(to_encode, JWT_SECRET_KEY, 'HS256')
 
 
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
@@ -117,9 +117,11 @@ async def signout():
     return {"success": True, "msg": "user signed out"}
 
 
-@router.post("/create_user", description="create a user", status_code=status.HTTP_201_CREATED)
+@router.post("/signup", summary="signup user", description="signup a new user", status_code=status.HTTP_201_CREATED)
 async def create_user(user: User, session: dbSession, response: Response):
     try:
+        hashed_password = get_hashed_password(user.password)
+        user.password = hashed_password
         session.add(user)
         session.commit()
         session.refresh(user)
