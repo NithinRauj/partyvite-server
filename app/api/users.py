@@ -26,15 +26,6 @@ class Token(BaseModel):
     token_type: str
 
 
-mock_users = {
-    "johndoe@example.com": {
-        "id": 2,
-        "name": "johndoe",
-        "email": "johndoe@example.com",
-        "password": "$argon2id$v=19$m=65536,t=3,p=4$wagCPXjifgvUFBzq4hqe3w$CYaIb8sB+wtD+Vu/P4uod1+Qof8h+1g7bbDlBID48Rc",
-    }
-}
-
 # Password utils
 password_hash = PasswordHash.recommended()
 
@@ -61,22 +52,26 @@ def generate_access_token(data: dict, expires_delta: datetime.timedelta | None =
     return jwt.encode(to_encode, JWT_SECRET_KEY, 'HS256')
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db_session: dbSession):
     unauthorized_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid credentials",
         headers={"WWW-Authenticate": "Bearer"})
     try:
         jwt_payload = jwt.decode(token, JWT_SECRET_KEY, 'HS256')
-        email = jwt_payload.get('sub')
-        if not email:
+        id = jwt_payload.get('sub')
+        jwt_version = jwt_payload.get('version')
+        if not id:
             raise unauthorized_exception
-    except InvalidTokenError:
+        query = select(User).where(User.id == id)
+        user = db_session.exec(query).one()
+        if not user:
+            raise unauthorized_exception
+        if user.token_version != int(jwt_version):
+            raise unauthorized_exception
+        return user
+    except Exception as e:
         raise unauthorized_exception
-    user_dict = mock_users.get(email)
-    if not user_dict:
-        raise unauthorized_exception
-    return User(**user_dict)
 
 
 @router.get('/me', description='get current logged in user')
@@ -106,16 +101,24 @@ async def signin(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db_
             form_data.username, form_data.password, db_session)
         if not user:
             raise credentials_exception
-        data = {"sub": user.id}
+        data = {"sub": str(user.id), "version": str(user.token_version)}
         token = generate_access_token(data=data)
         return Token(access_token=token, token_type='bearer')
     except Exception as e:
         raise credentials_exception
 
 
-@router.post("/signout", description="signs out user")
-async def signout():
-    return {"success": True, "msg": "user signed out"}
+@router.post("/signout", summary="sign out user", description="signs out user")
+async def signout(db_session: dbSession, current_user: Annotated[User, Depends(get_current_user)]):
+    try:
+        current_user.token_version += 1
+        db_session.add(current_user)
+        db_session.commit()
+        db_session.refresh(current_user)
+        return {"success": True, "msg": "user signed out"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal Server Error")
 
 
 @router.post("/signup", summary="signup user", description="signup a new user", status_code=status.HTTP_201_CREATED)
