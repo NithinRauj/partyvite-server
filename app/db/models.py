@@ -9,4 +9,4 @@ class User(SQLModel, table=True):
     name: str = Field(default=None)
     email: str = Field(default=None)
     password: str = Field(default=None)
-    token_version: int = Field(default=1)
+    token_version: int | None = Field(default=1)

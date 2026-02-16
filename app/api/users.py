@@ -8,7 +8,7 @@ from pwdlib import PasswordHash
 from psycopg2.errors import UniqueViolation
 from jwt.exceptions import InvalidTokenError
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi import APIRouter, Response, status, Depends, HTTPException
+from fastapi import APIRouter, Response, status, Depends, HTTPException, Body
 from ..db.models import User
 from ..db.main import dbSession
 from ..config import get_config
@@ -21,9 +21,13 @@ router = APIRouter(
 )
 
 
-class Token(BaseModel):
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class Token(BaseModel):
+    token: str
 
 
 # Password utils
@@ -52,7 +56,7 @@ def generate_access_token(data: dict, expires_delta: datetime.timedelta | None =
     return jwt.encode(to_encode, JWT_SECRET_KEY, 'HS256')
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db_session: dbSession):
+async def get_current_user(token: str, db_session: dbSession):
     unauthorized_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid credentials",
@@ -103,14 +107,15 @@ async def signin(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db_
             raise credentials_exception
         data = {"sub": str(user.id), "version": str(user.token_version)}
         token = generate_access_token(data=data)
-        return Token(access_token=token, token_type='bearer')
+        return TokenResponse(access_token=token, token_type='bearer')
     except Exception as e:
         raise credentials_exception
 
 
 @router.post("/signout", summary="sign out user", description="signs out user")
-async def signout(db_session: dbSession, current_user: Annotated[User, Depends(get_current_user)]):
+async def signout(token: Annotated[Token, Body()], db_session: dbSession):
     try:
+        current_user = await get_current_user(token.token, db_session)
         current_user.token_version += 1
         db_session.add(current_user)
         db_session.commit()

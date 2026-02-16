@@ -4,7 +4,6 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     DATABASE_URL: str
-    LOCAL_CLIENT_URL: str
     LOCALHOST_URL: str
     JWT_SECRET_KEY: str
 
@@ -20,6 +19,5 @@ def get_config():
 def get_allowed_origins():
     config = get_config()
     return [
-        config.LOCAL_CLIENT_URL,
-        config.LOCALHOST_URL
+        config.LOCALHOST_URL,
     ]
